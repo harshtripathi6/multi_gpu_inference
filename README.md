@@ -126,23 +126,3 @@ percentiles + time-series) · `/traces/{rid}` (full per-request timeline) ·
 | `BATCH_WAIT_MS` | `10` | max hold to fill a non-production batch (latency/throughput knob) |
 | `NUM_GPUS` | `2` | worker processes to spawn |
 | `MODEL_ID` | `stabilityai/sd-turbo` | any diffusers text2img model |
-
-## Design notes & honest limitations
-
-- **Where the toy diverges from production**: real fleets use Ray Serve /
-  Triton / K8s + Run:ai for placement, autoscaling, and fault tolerance.
-  Building the scheduler by hand here is the point — it makes the mechanisms
-  legible.
-- **Cross-process timing** is safe: `perf_counter` is CLOCK_MONOTONIC
-  (system-wide) on Linux, so worker and gateway spans are directly comparable
-  on one node.
-- **Preemption fidelity**: the ancestral sampler redraws per-step noise on
-  resume and batches share one noise generator, so images aren't bit-identical
-  across batch composition or preemption — acceptable for scheduling, not for
-  reproducibility-critical serving.
-- **Known next step — preemption thrash**: under heavy load, long jobs can be
-  re-evicted repeatedly; a minimum run quantum (no re-eviction within N ms of
-  resume) would bound this.
-- **Batching reorders within a class** (mates skip non-matching shapes);
-  cross-class priority is preserved because mates come only from the head's
-  own queue.
