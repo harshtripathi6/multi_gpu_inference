@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>GPU Scheduler Dashboard</title>
+<style>
+  :root { --bg:#0e1116; --card:#161b22; --line:#2d333b; --fg:#e6edf3;
+          --dim:#8b949e; --prod:#3fb950; --res:#d29922; --bench:#f85149;
+          --g0:#58a6ff; --g1:#bc8cff; }
+  * { box-sizing:border-box; }
+  body { background:var(--bg); color:var(--fg);
+         font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;
+         margin:0; padding:16px; }
+  h1 { font-size:15px; margin:0 0 12px; font-weight:600; }
+  h1 .meta { color:var(--dim); font-weight:400; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr));
+          gap:12px; }
+  .card { background:var(--card); border:1px solid var(--line);
+          border-radius:8px; padding:10px 12px; }
+  .card h2 { font-size:12px; color:var(--dim); margin:0 0 8px;
+             text-transform:uppercase; letter-spacing:.05em; }
+  .counters { display:flex; flex-wrap:wrap; gap:16px; }
+  .counters div b { display:block; font-size:20px; }
+  .counters div span { color:var(--dim); font-size:11px; }
+  table { border-collapse:collapse; width:100%; }
+  th,td { text-align:right; padding:2px 6px; border-bottom:1px solid var(--line); }
+  th { color:var(--dim); font-weight:400; }
+  td:first-child, th:first-child { text-align:left; }
+  svg { width:100%; height:90px; display:block; }
+  .legend span { margin-right:12px; }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:50%;
+         margin-right:4px; }
+  .events div { color:var(--dim); white-space:nowrap; overflow:hidden;
+                text-overflow:ellipsis; }
+  .q-production { color:var(--prod); } .q-research { color:var(--res); }
+  .q-benchmark { color:var(--bench); }
+</style>
+</head>
+<body>
+<h1>GPU Scheduler <span class="meta" id="meta"></span></h1>
+<div class="grid">
+  <div class="card" style="grid-column:1/-1">
+    <div class="counters" id="counters"></div>
+  </div>
+  <div class="card">
+    <h2>GPU utilization % (NVML)</h2>
+    <svg id="util" viewBox="0 0 600 90" preserveAspectRatio="none"></svg>
+    <div class="legend"><span><i class="dot" style="background:var(--g0)"></i>GPU 0</span>
+    <span><i class="dot" style="background:var(--g1)"></i>GPU 1</span></div>
+  </div>
+  <div class="card">
+    <h2>Queue depths</h2>
+    <svg id="depths" viewBox="0 0 600 90" preserveAspectRatio="none"></svg>
+    <div class="legend"><span><i class="dot" style="background:var(--prod)"></i>production</span>
+    <span><i class="dot" style="background:var(--res)"></i>research</span>
+    <span><i class="dot" style="background:var(--bench)"></i>benchmark</span></div>
+  </div>
+  <div class="card">
+    <h2>Latency spans, last 120s (ms, p50 / p99)</h2>
+    <table id="latency"></table>
+  </div>
+  <div class="card">
+    <h2>Recent requests</h2>
+    <table id="recent"></table>
+  </div>
+  <div class="card" style="grid-column:1/-1">
+    <h2>Scheduler events</h2>
+    <div class="events" id="events"></div>
+  </div>
+</div>
+<script>
+const COLORS = {0:"var(--g0)", 1:"var(--g1)",
+  production:"var(--prod)", research:"var(--res)", benchmark:"var(--bench)"};
+
+function polyline(values, maxV, color) {
+  if (values.length < 2) return "";
+  const W = 600, H = 90, n = values.length;
+  const pts = values.map((v, i) =>
+    `${(i/(n-1)*W).toFixed(1)},${(H - Math.min(v??0, maxV)/maxV*(H-6) - 3).toFixed(1)}`);
+  return `<polyline fill="none" stroke="${color}" stroke-width="1.5" points="${pts.join(" ")}"/>`;
+}
+
+function fmt(x) { return x == null ? "–" : x; }
+
+async function tick() {
+  let m;
+  try { m = await (await fetch("/metrics")).json(); }
+  catch (e) { document.getElementById("meta").textContent = "(disconnected)"; return; }
+
+  document.getElementById("meta").textContent =
+    `policy=${m.policy} max_batch=${m.max_batch}`;
+
+  const c = m.counters;
+  document.getElementById("counters").innerHTML = [
+    ["completed", c.completed], ["rejected", c.rejected],
+    ["preemptions", c.preemptions], ["resumes", c.resumes],
+    ["batches", c.batches],
+    ["SLO", c.slo_attainment == null ? "–" : (c.slo_attainment*100).toFixed(1)+"%"],
+    ["batch sizes", Object.entries(m.batch_size_hist)
+        .map(([k,v])=>`${k}×${v}`).join("  ") || "–"],
+  ].map(([k,v]) => `<div><b>${v}</b><span>${k}</span></div>`).join("");
+
+  const hist = m.history || [];
+  let svg = "";
+  for (const g of [0, 1])
+    svg += polyline(hist.map(h => h.util[g]), 100, COLORS[g]);
+  document.getElementById("util").innerHTML = svg;
+
+  const maxDepth = Math.max(4, ...hist.flatMap(h => Object.values(h.depths)));
+  svg = "";
+  for (const q of ["production", "research", "benchmark"])
+    svg += polyline(hist.map(h => h.depths[q]), maxDepth, COLORS[q]);
+  document.getElementById("depths").innerHTML = svg;
+
+  const spanCols = ["e2e_ms", "queue_ms", "ipc_ms", "gpu_ms", "respond_ms"];
+  let rows = `<tr><th>class</th><th>n</th>${spanCols.map(s =>
+      `<th>${s.replace("_ms","")}</th>`).join("")}<th>preempts</th></tr>`;
+  for (const q of ["production", "research", "benchmark"]) {
+    const L = m.latency[q];
+    if (!L) continue;
+    rows += `<tr><td class="q-${q}">${q}</td><td>${L.n}</td>` +
+      spanCols.map(s => `<td>${fmt(L[s]?.p50)} / ${fmt(L[s]?.p99)}</td>`).join("") +
+      `<td>${L.preempts}</td></tr>`;
+  }
+  document.getElementById("latency").innerHTML = rows;
+
+  rows = `<tr><th>rid</th><th>class</th><th>e2e</th><th>queue</th><th>ipc</th>
+          <th>gpu</th><th>resp</th><th>bs</th><th>pre</th></tr>`;
+  for (const r of (m.recent || []).slice(0, 12))
+    rows += `<tr><td>${r.rid.slice(0,8)}</td><td class="q-${r.queue}">${r.queue}</td>
+      <td>${fmt(r.e2e_ms)}</td><td>${fmt(r.queue_ms)}</td><td>${fmt(r.ipc_ms)}</td>
+      <td>${fmt(r.gpu_ms)}</td><td>${fmt(r.respond_ms)}</td>
+      <td>${fmt(r.final_batch_size)}</td><td>${r.preempts}</td></tr>`;
+  document.getElementById("recent").innerHTML = rows;
+
+  document.getElementById("events").innerHTML = (m.events || []).map(e =>
+    `<div>${new Date(e.wall_ts*1000).toLocaleTimeString()} [${e.kind}] ${e.detail}</div>`
+  ).join("");
+}
+tick();
+setInterval(tick, 1000);
+</script>
+</body>
+</html>

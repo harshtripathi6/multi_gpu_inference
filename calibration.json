@@ -1,0 +1,168 @@
+{
+  "model": "stabilityai/sd-turbo",
+  "gpu": "0",
+  "entries": [
+    {
+      "width": 512,
+      "height": 512,
+      "steps": 1,
+      "batch": 1,
+      "total_ms_mean": 65.2,
+      "per_image_ms": 65.2,
+      "peak_vram_gb": 3.27
+    },
+    {
+      "width": 512,
+      "height": 512,
+      "steps": 2,
+      "batch": 1,
+      "total_ms_mean": 83.2,
+      "per_image_ms": 83.2,
+      "peak_vram_gb": 3.27
+    },
+    {
+      "width": 512,
+      "height": 512,
+      "steps": 4,
+      "batch": 1,
+      "total_ms_mean": 127.9,
+      "per_image_ms": 127.9,
+      "peak_vram_gb": 3.27
+    },
+    {
+      "width": 512,
+      "height": 512,
+      "steps": 1,
+      "batch": 2,
+      "total_ms_mean": 83.8,
+      "per_image_ms": 41.9,
+      "peak_vram_gb": 3.71
+    },
+    {
+      "width": 512,
+      "height": 512,
+      "steps": 2,
+      "batch": 2,
+      "total_ms_mean": 109.1,
+      "per_image_ms": 54.6,
+      "peak_vram_gb": 3.71
+    },
+    {
+      "width": 512,
+      "height": 512,
+      "steps": 4,
+      "batch": 2,
+      "total_ms_mean": 152.4,
+      "per_image_ms": 76.2,
+      "peak_vram_gb": 3.71
+    },
+    {
+      "width": 512,
+      "height": 512,
+      "steps": 1,
+      "batch": 4,
+      "total_ms_mean": 122.9,
+      "per_image_ms": 30.7,
+      "peak_vram_gb": 4.78
+    },
+    {
+      "width": 512,
+      "height": 512,
+      "steps": 2,
+      "batch": 4,
+      "total_ms_mean": 145.1,
+      "per_image_ms": 36.3,
+      "peak_vram_gb": 4.78
+    },
+    {
+      "width": 512,
+      "height": 512,
+      "steps": 4,
+      "batch": 4,
+      "total_ms_mean": 189.4,
+      "per_image_ms": 47.4,
+      "peak_vram_gb": 4.78
+    },
+    {
+      "width": 768,
+      "height": 768,
+      "steps": 1,
+      "batch": 1,
+      "total_ms_mean": 96.1,
+      "per_image_ms": 96.1,
+      "peak_vram_gb": 4.07
+    },
+    {
+      "width": 768,
+      "height": 768,
+      "steps": 2,
+      "batch": 1,
+      "total_ms_mean": 118.4,
+      "per_image_ms": 118.4,
+      "peak_vram_gb": 4.07
+    },
+    {
+      "width": 768,
+      "height": 768,
+      "steps": 4,
+      "batch": 1,
+      "total_ms_mean": 164.5,
+      "per_image_ms": 164.5,
+      "peak_vram_gb": 4.07
+    },
+    {
+      "width": 768,
+      "height": 768,
+      "steps": 1,
+      "batch": 2,
+      "total_ms_mean": 165.6,
+      "per_image_ms": 82.8,
+      "peak_vram_gb": 5.05
+    },
+    {
+      "width": 768,
+      "height": 768,
+      "steps": 2,
+      "batch": 2,
+      "total_ms_mean": 187.4,
+      "per_image_ms": 93.7,
+      "peak_vram_gb": 5.05
+    },
+    {
+      "width": 768,
+      "height": 768,
+      "steps": 4,
+      "batch": 2,
+      "total_ms_mean": 232.3,
+      "per_image_ms": 116.1,
+      "peak_vram_gb": 5.05
+    },
+    {
+      "width": 768,
+      "height": 768,
+      "steps": 1,
+      "batch": 4,
+      "total_ms_mean": 299.3,
+      "per_image_ms": 74.8,
+      "peak_vram_gb": 7.47
+    },
+    {
+      "width": 768,
+      "height": 768,
+      "steps": 2,
+      "batch": 4,
+      "total_ms_mean": 333.7,
+      "per_image_ms": 83.4,
+      "peak_vram_gb": 7.47
+    },
+    {
+      "width": 768,
+      "height": 768,
+      "steps": 4,
+      "batch": 4,
+      "total_ms_mean": 405.2,
+      "per_image_ms": 101.3,
+      "peak_vram_gb": 7.47
+    }
+  ]
+}
