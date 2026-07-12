@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scheduler Demo</title>
+<style>
+  :root {
+    --bg:#0b0f14; --panel:#11161d; --line:#212b37; --fg:#dce3ea; --dim:#76828e;
+    --prod:#4ade80; --res:#fbbf24; --bench:#f0687a; --idle:#1a222c;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--bg); color:var(--fg); font:13px/1.5 var(--mono);
+         padding:20px; min-height:100vh; }
+  button { font:inherit; color:var(--fg); background:var(--panel);
+           border:1px solid var(--line); border-radius:6px; padding:8px 12px;
+           cursor:pointer; width:100%; text-align:left; transition:border-color .15s; }
+  button:hover { border-color:var(--dim); }
+  button:focus-visible { outline:2px solid var(--fg); outline-offset:2px; }
+  button b { float:right; color:var(--dim); font-weight:400; }
+  input[type=range] { width:100%; accent-color:var(--fg); }
+  input[type=text] { font:inherit; color:var(--fg); background:var(--bg);
+    border:1px solid var(--line); border-radius:6px; padding:8px; width:100%; }
+
+  header { display:flex; align-items:baseline; gap:16px; margin-bottom:18px;
+           flex-wrap:wrap; }
+  header h1 { font-size:14px; letter-spacing:.14em; font-weight:600; }
+  header .cfg { color:var(--dim); }
+  header .live { margin-left:auto; display:flex; gap:22px; }
+  header .live div b { font-size:19px; font-weight:600; display:block; }
+  header .live div span { color:var(--dim); font-size:11px; }
+
+  .layout { display:grid; grid-template-columns:250px 1fr; gap:18px; }
+  @media (max-width:820px){ .layout { grid-template-columns:1fr; } }
+
+  .card { background:var(--panel); border:1px solid var(--line);
+          border-radius:8px; padding:12px; }
+  .card h2 { font-size:11px; color:var(--dim); letter-spacing:.12em;
+             text-transform:uppercase; font-weight:500; margin-bottom:10px; }
+  .controls { display:flex; flex-direction:column; gap:8px; }
+  .controls .sub { color:var(--dim); font-size:11px; margin-top:6px; }
+  .row { display:flex; gap:8px; align-items:center; }
+
+  .queues { display:grid; grid-template-columns:repeat(3,1fr); gap:12px;
+            margin-bottom:14px; }
+  .queue { min-height:86px; }
+  .queue h3 { font-size:11px; font-weight:500; letter-spacing:.08em;
+              margin-bottom:8px; display:flex; justify-content:space-between; }
+  .queue h3 span { color:var(--dim); }
+  .chips { display:flex; flex-wrap:wrap; gap:4px; }
+  .chip { width:12px; height:12px; border-radius:3px; opacity:.9;
+          animation:pop .18s ease-out; }
+  @keyframes pop { from { transform:scale(.4); } to { transform:scale(1); } }
+  .chip.rejected { background:transparent !important;
+                   border:1px solid var(--bench); animation:fade .5s forwards; }
+  @keyframes fade { to { opacity:0; } }
+
+  .gpu { margin-bottom:12px; }
+  .gpu .head { display:flex; align-items:center; gap:12px; margin-bottom:6px; }
+  .gpu .head .name { font-weight:600; }
+  .gpu .head .batch { font-size:11px; }
+  .gpu .head .done { margin-left:auto; color:var(--dim); font-size:11px; }
+  .gpu canvas { width:100%; height:56px; display:block; background:var(--idle);
+                border:1px solid var(--line); border-radius:6px; }
+  .utilbar { height:3px; background:var(--line); border-radius:2px;
+             margin-top:5px; overflow:hidden; }
+  .utilbar i { display:block; height:100%; background:var(--fg);
+               width:0%; transition:width .4s; }
+
+  .ticker { margin-top:4px; }
+  .ticker div { color:var(--dim); font-size:11px; white-space:nowrap;
+                overflow:hidden; text-overflow:ellipsis; }
+  .ticker div:first-child { color:var(--fg); }
+
+  #thumb { margin-top:10px; display:none; }
+  #thumb img { width:100%; border-radius:6px; border:1px solid var(--line); }
+  #thumb .meta { color:var(--dim); font-size:11px; margin-top:4px; }
+
+  .k-prod { color:var(--prod); } .k-res { color:var(--res); }
+  .k-bench { color:var(--bench); }
+  .legend { color:var(--dim); font-size:11px; margin-top:8px; }
+  .legend i { display:inline-block; width:9px; height:9px; border-radius:2px;
+              margin:0 4px 0 12px; vertical-align:-1px; }
+  @media (prefers-reduced-motion:reduce){ .chip{animation:none} }
+</style>
+</head>
+<body>
+<header>
+  <h1>MULTI-GPU INFERENCE SCHEDULER</h1>
+  <span class="cfg" id="cfg">connecting…</span>
+  <div class="live">
+    <div><b id="rate">0.0</b><span>img/s</span></div>
+    <div><b id="completed">0</b><span>completed</span></div>
+    <div><b id="preempts">0</b><span>preemptions</span></div>
+  </div>
+</header>
+
+<div class="layout">
+  <div class="controls">
+    <div class="card">
+      <h2>Send traffic</h2>
+      <div class="controls">
+        <button onclick="burstProduction()">Production burst <b>×6</b></button>
+        <button onclick="floodResearch()">Research flood <b>×24</b></button>
+        <button onclick="longBenchmark()">Background job <b>768² ×40 steps</b></button>
+        <div class="sub">Auto traffic (Poisson, 70/20/10 mix)</div>
+        <div class="row">
+          <button id="autoBtn" style="width:auto" onclick="toggleAuto()">Start</button>
+          <input type="range" id="rps" min="1" max="30" value="8"
+                 oninput="rpsLabel.textContent=this.value+' rps'">
+          <span id="rpsLabel" style="white-space:nowrap">8 rps</span>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Generate one image</h2>
+      <div class="controls">
+        <input type="text" id="prompt" value="a lighthouse at golden hour"
+               aria-label="Prompt">
+        <button onclick="generateOne()">Generate <b>production</b></button>
+      </div>
+      <div id="thumb"><img id="thumbImg" alt="generated image">
+        <div class="meta" id="thumbMeta"></div></div>
+    </div>
+  </div>
+
+  <div>
+    <div class="queues">
+      <div class="card queue"><h3 class="k-prod">production <span id="d-production">0</span></h3><div class="chips" id="q-production"></div></div>
+      <div class="card queue"><h3 class="k-res">research <span id="d-research">0</span></h3><div class="chips" id="q-research"></div></div>
+      <div class="card queue"><h3 class="k-bench">benchmark <span id="d-benchmark">0</span></h3><div class="chips" id="q-benchmark"></div></div>
+    </div>
+
+    <div class="card">
+      <h2>GPU timeline — last 30 s</h2>
+      <div class="gpu" id="gpu0">
+        <div class="head"><span class="name">GPU 0</span>
+          <span class="batch" id="b0">idle</span>
+          <span class="done" id="c0">0 done</span></div>
+        <canvas id="t0" height="56"></canvas>
+        <div class="utilbar"><i id="u0"></i></div>
+      </div>
+      <div class="gpu" id="gpu1">
+        <div class="head"><span class="name">GPU 1</span>
+          <span class="batch" id="b1">idle</span>
+          <span class="done" id="c1">0 done</span></div>
+        <canvas id="t1" height="56"></canvas>
+        <div class="utilbar"><i id="u1"></i></div>
+      </div>
+      <div class="legend">batch segments:<i style="background:var(--prod)"></i>production
+        <i style="background:var(--res)"></i>research
+        <i style="background:var(--bench)"></i>benchmark
+        &nbsp;·&nbsp; white tick = preemption</div>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <h2>Events</h2>
+      <div class="ticker" id="ticker"><div>waiting for events…</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// API calls are relative to wherever this page is served from, so the demo
+// works both under an SSH tunnel (localhost:8000/demo) and behind a
+// path-prefix reverse proxy like CCR OnDemand (.../rnode/<node>/8000/demo).
+const BASE = location.pathname.replace(/\/demo\/?$/, "");
+const api = p => BASE + p;
+
+const CLS = {production:"--prod", research:"--res", benchmark:"--bench"};
+const cvar = n => getComputedStyle(document.documentElement).getPropertyValue(n);
+const WINDOW_S = 30;
+const segments = {0:[], 1:[]};     // {t0,t1,cls}
+const ticks = {0:[], 1:[]};        // preemption times
+const doneCount = {0:0, 1:0};
+let inflight = 0, auto = false, lastEventTs = 0;
+const rateSamples = [];            // [wall, completedTotal]
+
+// ---------------- traffic ----------------
+function chip(cls) {
+  const el = document.createElement("i");
+  el.className = "chip";
+  el.style.background = `var(${CLS[cls]})`;
+  document.getElementById("q-" + cls).appendChild(el);
+  return el;
+}
+
+async function send(spec) {
+  const c = chip(spec.queue);
+  inflight++;
+  try {
+    const r = await fetch(api("/generate"), {method:"POST",
+      headers:{"Content-Type":"application/json"}, body:JSON.stringify(spec)});
+    if (r.ok) {
+      const d = await r.json();
+      const now = performance.now() / 1000;
+      segments[d.gpu_id].push({t0: now - d.gpu_time_ms/1000, t1: now,
+                               cls: spec.queue});
+      doneCount[d.gpu_id]++;
+      document.getElementById("c"+d.gpu_id).textContent = doneCount[d.gpu_id]+" done";
+      c.remove();
+      return d;
+    }
+    c.classList.add("rejected");            // 429 backpressure
+    setTimeout(() => c.remove(), 500);
+  } catch (e) { c.remove(); }
+  finally { inflight--; }
+}
+
+let seq = 0;
+const prodSpec  = () => ({prompt:"demo "+(seq++), steps:2, width:512, height:512,
+  queue:"production", tenant_id:"prod-"+(seq%4), return_image:false, seed:seq});
+const resSpec   = () => ({prompt:"demo "+(seq++), steps:4, width:512, height:512,
+  queue:"research", tenant_id:"res-"+(seq%6), return_image:false, seed:seq});
+const benchSpec = (long) => ({prompt:"demo "+(seq++),
+  steps:long?40:8, width:long?768:512, height:long?768:512,
+  queue:"benchmark", tenant_id:"bench-"+(seq%6), return_image:false, seed:seq});
+
+function burstProduction(){ for (let i=0;i<6;i++) send(prodSpec()); }
+function floodResearch(){ let i=0;
+  const t=setInterval(()=>{ send(resSpec()); if(++i>=24) clearInterval(t); },12); }
+function longBenchmark(){ send(benchSpec(true)); }
+
+async function generateOne() {
+  const spec = prodSpec();
+  spec.prompt = document.getElementById("prompt").value || spec.prompt;
+  spec.return_image = true;
+  const d = await send(spec);
+  if (d && d.image_b64) {
+    document.getElementById("thumb").style.display = "block";
+    document.getElementById("thumbImg").src = "data:image/png;base64,"+d.image_b64;
+    document.getElementById("thumbMeta").textContent =
+      `gpu ${d.gpu_id} · ${d.e2e_ms} ms e2e · batch ${d.batch_size}`;
+  }
+}
+
+function toggleAuto() {
+  auto = !auto;
+  document.getElementById("autoBtn").textContent = auto ? "Stop" : "Start";
+  if (auto) autoLoop();
+}
+async function autoLoop() {
+  while (auto) {
+    const rps = +document.getElementById("rps").value;
+    await new Promise(r => setTimeout(r, -Math.log(1-Math.random())/rps*1000));
+    if (!auto) break;
+    const x = Math.random();
+    send(x < .7 ? prodSpec() : x < .9 ? resSpec() : benchSpec(Math.random()<.5));
+  }
+}
+
+// ---------------- polling ----------------
+async function poll() {
+  try {
+    const s = await (await fetch(api("/stats"))).json();
+    for (const q of ["production","research","benchmark"])
+      document.getElementById("d-"+q).textContent = s.queue_depths[q];
+    for (const g of [0,1]) {
+      const busy = s.busy[g], el = document.getElementById("b"+g);
+      if (busy) { el.textContent = `${busy.queue} ×${busy.size}`;
+                  el.style.color = `var(${CLS[busy.queue]})`; }
+      else { el.textContent = "idle"; el.style.color = "var(--dim)"; }
+      const util = s.gpu_telemetry?.[g]?.util_pct;
+      document.getElementById("u"+g).style.width = (util ?? 0)+"%";
+    }
+    document.getElementById("completed").textContent = s.completed;
+    document.getElementById("preempts").textContent = s.preemptions;
+    const now = performance.now()/1000;
+    rateSamples.push([now, s.completed]);
+    while (rateSamples.length && rateSamples[0][0] < now-5) rateSamples.shift();
+    if (rateSamples.length > 1) {
+      const [t0,c0] = rateSamples[0], [t1,c1] = rateSamples.at(-1);
+      document.getElementById("rate").textContent =
+        (t1>t0 ? (c1-c0)/(t1-t0) : 0).toFixed(1);
+    }
+  } catch(e){ document.getElementById("cfg").textContent = "disconnected"; }
+}
+
+async function pollEvents() {
+  try {
+    const m = await (await fetch(api("/metrics"))).json();
+    const evs = (m.events||[]).filter(e => e.wall_ts > lastEventTs);
+    if (evs.length) lastEventTs = Math.max(...evs.map(e=>e.wall_ts));
+    for (const e of evs.reverse()) {
+      const g = /gpu(\d)/.exec(e.detail || "");
+      if (e.kind === "preempt_signal" && g) ticks[+g[1]].push(performance.now()/1000);
+      const row = document.createElement("div");
+      row.textContent = `${new Date(e.wall_ts*1000).toLocaleTimeString()}  ${e.kind}  ${e.detail}`;
+      const tick = document.getElementById("ticker");
+      tick.prepend(row);
+      while (tick.children.length > 5) tick.lastChild.remove();
+    }
+  } catch(e){}
+}
+
+async function cfg() {
+  try {
+    const h = await (await fetch(api("/health"))).json();
+    document.getElementById("cfg").textContent =
+      `policy=${h.policy} · max_batch=${h.max_batch} · wait=${h.batch_wait_ms}ms`;
+  } catch(e){ setTimeout(cfg, 2000); }
+}
+
+// ---------------- timeline rendering ----------------
+function draw() {
+  const now = performance.now()/1000;
+  for (const g of [0,1]) {
+    const cv = document.getElementById("t"+g);
+    const W = cv.width = cv.clientWidth * devicePixelRatio;
+    const H = cv.height = 56 * devicePixelRatio;
+    const ctx = cv.getContext("2d");
+    ctx.clearRect(0,0,W,H);
+    const x = t => W - (now - t)/WINDOW_S * W;
+    segments[g] = segments[g].filter(s => s.t1 > now - WINDOW_S);
+    for (const s of segments[g]) {
+      ctx.fillStyle = cvar(CLS[s.cls]);
+      const x0 = Math.max(0, x(s.t0));
+      ctx.fillRect(x0, H*0.18, Math.max(2, x(s.t1)-x0), H*0.64);
+    }
+    ticks[g] = ticks[g].filter(t => t > now - WINDOW_S);
+    ctx.fillStyle = "#ffffff";
+    for (const t of ticks[g]) ctx.fillRect(x(t)-1, 0, 2*devicePixelRatio, H);
+  }
+  requestAnimationFrame(draw);
+}
+
+cfg();
+setInterval(poll, 400);
+setInterval(pollEvents, 1000);
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>

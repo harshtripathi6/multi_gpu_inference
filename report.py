@@ -91,7 +91,7 @@ def make_plots(rows, outdir="plots"):
     for r in rows:
         series[(r["policy"], r["max_batch"])].append((r["rps"], r))
     for k in series:
-        series[k].sort()
+        series[k].sort(key=lambda x: x[0])
 
     specs = [
         ("prod_p99_vs_load", "production_p99", "Production p99 e2e (ms)",
